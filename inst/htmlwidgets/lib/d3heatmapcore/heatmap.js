@@ -54,7 +54,7 @@ function heatmap(selector, data, options) {
   opts.xclust_height = options.xclust_height || opts.height * 0.12;
   opts.yclust_width = options.yclust_width || opts.width * 0.12;
   opts.link_color = opts.link_color || "#AAA";
-  opts.xaxis_height = options.xaxis_height || 80;
+  opts.xaxis_height = options.xaxis_height || 120;
   opts.yaxis_width = options.yaxis_width || 120;
   opts.axis_padding = options.axis_padding || 6;
   opts.show_grid = options.show_grid;
@@ -65,6 +65,10 @@ function heatmap(selector, data, options) {
   opts.xaxis_font_size = options.xaxis_font_size;
   opts.yaxis_font_size = options.yaxis_font_size;
   opts.anim_duration = options.anim_duration;
+  opts.show_tip = options.show_tip;
+  if (typeof(opts.show_tip) === 'undefined') {
+    opts.show_tip  = true;
+  }
   if (typeof(opts.anim_duration) === 'undefined') {
     opts.anim_duration = 500;
   }
@@ -174,18 +178,17 @@ function heatmap(selector, data, options) {
     var cols = data.dim[1];
     var rows = data.dim[0];
     
-    var merged = data.merged;
+    var merged = data.data;
     
     var x = d3.scale.linear().domain([0, cols]).range([0, width]);
     var y = d3.scale.linear().domain([0, rows]).range([0, height]);
+    var color = d3.scale.linear()
+        .domain(data.domain)
+        .range(data.colors);
     var tip = d3.tip()
         .attr('class', 'd3heatmap-tip')
-        .html(function(d, i) {
-          return "<table>" + 
-            "<tr><th align=\"right\">Row</th><td>" + htmlEscape(data.rows[d.row]) + "</td></tr>" +
-            "<tr><th align=\"right\">Column</th><td>" + htmlEscape(data.cols[d.col]) + "</td></tr>" +
-            "<tr><th align=\"right\">Value</th><td>" + htmlEscape(d.label) + "</td></tr>" +
-            "</table>";
+        .html(function(d) {
+          return htmlEscape(d);
         })
         .direction("se")
         .style("position", "fixed");
@@ -235,16 +238,16 @@ function heatmap(selector, data, options) {
     rect.enter().append("rect").classed("datapt", true)
         .property("colIndex", function(d, i) { return i % cols; })
         .property("rowIndex", function(d, i) { return Math.floor(i / cols); })
-        .property("value", function(d, i) { return d.value; })
+        .property("value", function(d, i) { return d; })
         .attr("fill", function(d) {
-          if (!d.color) {
+          if (d === null) {
             return "transparent";
           }
-          return d.color;
+          return color(d);
         });
     rect.exit().remove();
     rect.append("title")
-        .text(function(d, i) { return d.label; });
+        .text(function(d, i) { return (d === null) ? "NA" : d + ""; });
     rect.call(tip);
 
     var spacing;
@@ -285,26 +288,16 @@ function heatmap(selector, data, options) {
           tip.style("display", "block");
         })
         .on("mousemove", function() {
-          var e = d3.event;
-          var offsetX = d3.event.offsetX;
-          var offsetY = d3.event.offsetY;
-          if (typeof(offsetX) === "undefined") {
-            // Firefox 38 and earlier
-            var target = e.target || e.srcElement;
-            var rect = target.getBoundingClientRect();
-            offsetX = e.clientX - rect.left,
-            offsetY = e.clientY - rect.top;
-          }
-          
-          var col = Math.floor(x.invert(offsetX));
-          var row = Math.floor(y.invert(offsetY));
-          var label = merged[row*cols + col].label;
-          tip.show({col: col, row: row, label: label}).style({
+          var col = Math.floor(x.invert(d3.event.offsetX));
+          var row = Math.floor(y.invert(d3.event.offsetY));
+          var value = merged[row*cols + col];
+          opacity = (opts.show_tip) ? 0.9 : 0.0;
+          tip.show(value).style({
             top: d3.event.clientY + 15 + "px",
             left: d3.event.clientX + 15 + "px",
-            opacity: 0.9
+            opacity: opacity
           });
-          controller.datapoint_hover({col:col, row:row, label:label});
+          controller.datapoint_hover({col:col, row:row, value:value});
         })
         .on("mouseleave", function() {
           tip.hide().style("display", "none");
@@ -436,30 +429,10 @@ function heatmap(selector, data, options) {
 
   }
   
-  function edgeStrokeWidth(node) {
-    if (node.edgePar && node.edgePar.lwd)
-      return node.edgePar.lwd;
-    else
-      return 1;
-  }
-  
-  function maxChildStrokeWidth(node, recursive) {
-    var max = 0;
-    for (var i = 0; i < node.children.length; i++) {
-      if (recursive) {
-        max = Math.max(max, maxChildStrokeWidth(node.children[i], true));
-      }
-      max = Math.max(max, edgeStrokeWidth(node.children[i]));
-    }
-    return max;
-  }
-  
   function dendrogram(svg, data, rotated, width, height, padding) {
-    var topLineWidth = maxChildStrokeWidth(data, false);
-    
     var x = d3.scale.linear()
         .domain([data.height, 0])
-        .range([topLineWidth/2, width-padding]);
+        .range([-1, width-padding]);
     var y = d3.scale.linear()
         .domain([0, height])
         .range([0, height]);
@@ -471,7 +444,7 @@ function heatmap(selector, data, options) {
     var transform = "translate(1,0)";
     if (rotated) {
       // Flip dendrogram vertically
-      x.range([topLineWidth/2, -height+padding+2]);
+      x.range([2, -height+padding+2]);
       // Rotate
       transform = "rotate(-90) translate(-2,0)";
     }
@@ -502,40 +475,11 @@ function heatmap(selector, data, options) {
       .enter().append("polyline")
         .attr("class", "link")
         .attr("stroke", function(d, i) {
-          if (!d.edgePar.col) {
+          if (!d.edgePar || !d.edgePar.col) {
             return opts.link_color;
           } else {
             return d.edgePar.col;
           }
-        })
-        .attr("stroke-width", edgeStrokeWidth)
-        .attr("stroke-dasharray", function(d, i) {
-          var pattern;
-          switch (d.edgePar.lty) {
-            case 6:
-              pattern = [3,3,5,3];
-              break;
-            case 5:
-              pattern = [15,5];
-              break;
-            case 4:
-              pattern = [2,4,4,4];
-              break;
-            case 3:
-              pattern = [2,4];
-              break;
-            case 2:
-              pattern = [4,4];
-              break;
-            case 1:
-            default:
-              pattern = [];
-              break;
-          }
-          for (var i = 0; i < pattern.length; i++) {
-            pattern[i] = pattern[i] * (d.edgePar.lwd || 1);
-          }
-          return pattern.join(",");
         });
 
     function draw(selection) {
