@@ -108,11 +108,12 @@ function heatmap(selector, data, options) {
     width: opts.yaxis_width,
     height: colormapBounds.height
   };
+  var xPadding = 100 // padding so x-axis labels do not overflow
   var xaxisBounds = {
     position: "absolute",
     top: colormapBounds.top + colormapBounds.height,
-    left: colormapBounds.left,
-    width: colormapBounds.width,
+    left: colormapBounds.left-xPadding,
+    width: colormapBounds.width+xPadding,
     height: opts.xaxis_height
   };
 
@@ -163,7 +164,7 @@ function heatmap(selector, data, options) {
   var row = !data.rows ? null : dendrogram(el.select('svg.rowDend'), data.rows, false, rowDendBounds.width, rowDendBounds.height, opts.axis_padding);
   var col = !data.cols ? null : dendrogram(el.select('svg.colDend'), data.cols, true, colDendBounds.width, colDendBounds.height, opts.axis_padding);
   var colormap = colormap(el.select('svg.colormap'), data.matrix, colormapBounds.width, colormapBounds.height);
-  var xax = axisLabels(el.select('svg.xaxis'), data.cols || data.matrix.cols, true, xaxisBounds.width, xaxisBounds.height, opts.axis_padding);
+  var xax = axisLabels(el.select('svg.xaxis'), data.cols || data.matrix.cols, true, xaxisBounds.width - xPadding, xaxisBounds.height, opts.axis_padding);
   var yax = axisLabels(el.select('svg.yaxis'), data.rows || data.matrix.rows, false, yaxisBounds.width, yaxisBounds.height, opts.axis_padding);
   
   function colormap(svg, data, width, height) {
@@ -338,18 +339,17 @@ function heatmap(selector, data, options) {
 
     // Create the actual axis
     var axisNodes = svg.append("g")
-        .attr("transform", rotated ? "translate(0," + padding + ")" : "translate(" + padding + ",0)")
+        .attr("transform", rotated ? "translate("+xPadding+"," + padding + ")" : "translate(" + padding + ",0)")
         .call(axis);
     var fontSize = opts[(rotated ? 'x' : 'y') + 'axis_font_size']
         || Math.min(18, Math.max(9, scale.rangeBand() - (rotated ? 11: 8))) + "px";
     axisNodes.selectAll("text").style("font-size", fontSize);
-    
     var mouseTargets = svg.append("g")
       .selectAll("g").data(leaves);
     mouseTargets
       .enter()
         .append("g").append("rect")
-          .attr("transform", rotated ? "rotate(45),translate(0,0)" : "")
+          .attr("transform", rotated ? "translate(" + String(xPadding + 8) + ",13),rotate(135)" : "")
           .attr("fill", "transparent")
           .on("click", function(d, i) {
             var dim = rotated ? 'x' : 'y';
@@ -379,8 +379,8 @@ function heatmap(selector, data, options) {
 
     if (rotated) {
       axisNodes.selectAll("text")
-        .attr("transform", "rotate(45),translate(6, 0)")
-        .style("text-anchor", "start");
+        .attr("transform", "rotate(-45),translate(-10, 0)")
+        .style("text-anchor", "end");
     }
     
     controller.on('highlight.axis-' + (rotated ? 'x' : 'y'), function(hl) {
@@ -404,7 +404,7 @@ function heatmap(selector, data, options) {
       tAxisNodes.call(axis);
       // Set text-anchor on the non-transitioned node to prevent jumpiness
       // in RStudio Viewer pane
-      axisNodes.selectAll("text").style("text-anchor", "start");
+      axisNodes.selectAll("text").style("text-anchor", rotated ? "end" : "start");
       tAxisNodes.selectAll("g")
           .style("opacity", function(d, i) {
             if (i >= _.extent[0][dim] && i < _.extent[1][dim]) {
@@ -415,7 +415,7 @@ function heatmap(selector, data, options) {
           });
       tAxisNodes
         .selectAll("text")
-          .style("text-anchor", "start");
+          .style("text-anchor", rotated ? "end" : "start");
       mouseTargets.transition().duration(opts.anim_duration).ease('linear')
           .call(layoutMouseTargets)
           .style("opacity", function(d, i) {
