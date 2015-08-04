@@ -54,21 +54,21 @@ function heatmap(selector, data, options) {
   opts.xclust_height = options.xclust_height || opts.height * 0.12;
   opts.yclust_width = options.yclust_width || opts.width * 0.12;
   opts.link_color = opts.link_color || "#AAA";
-  opts.xaxis_height = options.xaxis_height || 120;
+  opts.xaxis_height = options.xaxis_height || 80;
   opts.yaxis_width = options.yaxis_width || 120;
   opts.axis_padding = options.axis_padding || 6;
   opts.show_grid = options.show_grid;
   if (typeof(opts.show_grid) === 'undefined') {
     opts.show_grid = true;
   }
+  opts.tip_transformation = options.tip_transformation;
+  if (typeof(opts.tip_transformation) === 'undefined'){
+    opts.tip_transformation = 'none';
+  }
   opts.brush_color = options.brush_color || "#0000FF";
   opts.xaxis_font_size = options.xaxis_font_size;
   opts.yaxis_font_size = options.yaxis_font_size;
   opts.anim_duration = options.anim_duration;
-  opts.show_tip = options.show_tip;
-  if (typeof(opts.show_tip) === 'undefined') {
-    opts.show_tip  = true;
-  }
   if (typeof(opts.anim_duration) === 'undefined') {
     opts.anim_duration = 500;
   }
@@ -101,6 +101,8 @@ function heatmap(selector, data, options) {
     width: opts.yclust_width,
     height: colormapBounds.height
   };
+  var xPadding = 100;
+  
   var yaxisBounds = {
     position: "absolute",
     top: colormapBounds.top,
@@ -111,8 +113,8 @@ function heatmap(selector, data, options) {
   var xaxisBounds = {
     position: "absolute",
     top: colormapBounds.top + colormapBounds.height,
-    left: colormapBounds.left,
-    width: colormapBounds.width,
+    left: colormapBounds.left  - xPadding,
+    width: colormapBounds.width + xPadding,
     height: opts.xaxis_height
   };
 
@@ -163,7 +165,7 @@ function heatmap(selector, data, options) {
   var row = !data.rows ? null : dendrogram(el.select('svg.rowDend'), data.rows, false, rowDendBounds.width, rowDendBounds.height, opts.axis_padding);
   var col = !data.cols ? null : dendrogram(el.select('svg.colDend'), data.cols, true, colDendBounds.width, colDendBounds.height, opts.axis_padding);
   var colormap = colormap(el.select('svg.colormap'), data.matrix, colormapBounds.width, colormapBounds.height);
-  var xax = axisLabels(el.select('svg.xaxis'), data.cols || data.matrix.cols, true, xaxisBounds.width, xaxisBounds.height, opts.axis_padding);
+  var xax = axisLabels(el.select('svg.xaxis'), data.cols || data.matrix.cols, true, xaxisBounds.width - xPadding, xaxisBounds.height, opts.axis_padding);
   var yax = axisLabels(el.select('svg.yaxis'), data.rows || data.matrix.rows, false, yaxisBounds.width, yaxisBounds.height, opts.axis_padding);
   
   function colormap(svg, data, width, height) {
@@ -177,18 +179,20 @@ function heatmap(selector, data, options) {
  
     var cols = data.dim[1];
     var rows = data.dim[0];
-    
-    var merged = data.data;
+    var merged = data.merged;
     
     var x = d3.scale.linear().domain([0, cols]).range([0, width]);
     var y = d3.scale.linear().domain([0, rows]).range([0, height]);
-    var color = d3.scale.linear()
-        .domain(data.domain)
-        .range(data.colors);
     var tip = d3.tip()
         .attr('class', 'd3heatmap-tip')
-        .html(function(d) {
-          return htmlEscape(d);
+        .html(function(d, i) {
+          console.log('Transformed',htmlEscape(data.rows[d.row]),htmlEscape(data.cols[d.col]),d.label);
+          console.log("unTransformed",unTransform(htmlEscape(d.label)).toString());
+          return "<table>" + 
+            "<tr><th align=\"right\">Row</th><td>" + htmlEscape(data.rows[d.row]) + "</td></tr>" +
+            "<tr><th align=\"right\">Column</th><td>" + htmlEscape(data.cols[d.col]) + "</td></tr>" +
+            "<tr><th align=\"right\">Value</th><td>" + unTransform(htmlEscape(d.label)).toString() + "</td></tr>" +
+            "</table>";
         })
         .direction("se")
         .style("position", "fixed");
@@ -238,16 +242,16 @@ function heatmap(selector, data, options) {
     rect.enter().append("rect").classed("datapt", true)
         .property("colIndex", function(d, i) { return i % cols; })
         .property("rowIndex", function(d, i) { return Math.floor(i / cols); })
-        .property("value", function(d, i) { return d; })
+        .property("value", function(d, i) { return d.value; })
         .attr("fill", function(d) {
-          if (d === null) {
+          if (!d.color) {
             return "transparent";
           }
-          return color(d);
+          return d.color;
         });
     rect.exit().remove();
     rect.append("title")
-        .text(function(d, i) { return (d === null) ? "NA" : d + ""; });
+        .text(function(d, i) { return d.label; });
     rect.call(tip);
 
     var spacing;
@@ -288,16 +292,26 @@ function heatmap(selector, data, options) {
           tip.style("display", "block");
         })
         .on("mousemove", function() {
-          var col = Math.floor(x.invert(d3.event.offsetX));
-          var row = Math.floor(y.invert(d3.event.offsetY));
-          var value = merged[row*cols + col];
-          opacity = (opts.show_tip) ? 0.9 : 0.0;
-          tip.show(value).style({
+          var e = d3.event;
+          var offsetX = d3.event.offsetX;
+          var offsetY = d3.event.offsetY;
+          if (typeof(offsetX) === "undefined") {
+            // Firefox 38 and earlier
+            var target = e.target || e.srcElement;
+            var rect = target.getBoundingClientRect();
+            offsetX = e.clientX - rect.left,
+            offsetY = e.clientY - rect.top;
+          }
+          
+          var col = Math.floor(x.invert(offsetX));
+          var row = Math.floor(y.invert(offsetY));
+          var label = merged[row*cols + col].label;
+          tip.show({col: col, row: row, label: label}).style({
             top: d3.event.clientY + 15 + "px",
             left: d3.event.clientX + 15 + "px",
-            opacity: opacity
+            opacity: 0.9
           });
-          controller.datapoint_hover({col:col, row:row, value:value});
+          controller.datapoint_hover({col:col, row:row, label:label});
         })
         .on("mouseleave", function() {
           tip.hide().style("display", "none");
@@ -338,7 +352,7 @@ function heatmap(selector, data, options) {
 
     // Create the actual axis
     var axisNodes = svg.append("g")
-        .attr("transform", rotated ? "translate(0," + padding + ")" : "translate(" + padding + ",0)")
+        .attr("transform", rotated ? "translate("+xPadding+"," + padding + ")" : "translate(" + padding + ",0)")
         .call(axis);
     var fontSize = opts[(rotated ? 'x' : 'y') + 'axis_font_size']
         || Math.min(18, Math.max(9, scale.rangeBand() - (rotated ? 11: 8))) + "px";
@@ -379,8 +393,8 @@ function heatmap(selector, data, options) {
 
     if (rotated) {
       axisNodes.selectAll("text")
-        .attr("transform", "rotate(45),translate(6, 0)")
-        .style("text-anchor", "start");
+        .attr("transform", "rotate(-45),translate(-10, 0)")
+        .style("text-anchor", "end");
     }
     
     controller.on('highlight.axis-' + (rotated ? 'x' : 'y'), function(hl) {
@@ -404,7 +418,7 @@ function heatmap(selector, data, options) {
       tAxisNodes.call(axis);
       // Set text-anchor on the non-transitioned node to prevent jumpiness
       // in RStudio Viewer pane
-      axisNodes.selectAll("text").style("text-anchor", "start");
+      axisNodes.selectAll("text").style("text-anchor", rotated ? "end" : "start");
       tAxisNodes.selectAll("g")
           .style("opacity", function(d, i) {
             if (i >= _.extent[0][dim] && i < _.extent[1][dim]) {
@@ -415,7 +429,7 @@ function heatmap(selector, data, options) {
           });
       tAxisNodes
         .selectAll("text")
-          .style("text-anchor", "start");
+          .style("text-anchor", rotated ? "end" : "start");
       mouseTargets.transition().duration(opts.anim_duration).ease('linear')
           .call(layoutMouseTargets)
           .style("opacity", function(d, i) {
@@ -429,10 +443,46 @@ function heatmap(selector, data, options) {
 
   }
   
+  function isNumeric(n) {
+    return !isNaN(parseFloat(n)) && isFinite(n);
+  }
+
+  function unTransform(n) {
+    n = parseFloat(n);
+    if (opts.tip_transformation == 'none' || !(isNumeric(n)))  { return n;}
+    if (opts.tip_transformation == 'log10') {
+      return 1/Math.pow(10,Math.abs(n));
+    } else if(opts.tip_transformation == 'log2'){
+      return 1/Math.pow(2,Math.abs(n));
+    } else {
+      return n;
+    }
+  }
+  
+  function edgeStrokeWidth(node) {
+    if (node.edgePar && node.edgePar.lwd)
+      return node.edgePar.lwd;
+    else
+      return 1;
+  }
+  
+  function maxChildStrokeWidth(node, recursive) {
+    var max = 0;
+    for (var i = 0; i < node.children.length; i++) {
+      if (recursive) {
+        max = Math.max(max, maxChildStrokeWidth(node.children[i], true));
+      }
+      max = Math.max(max, edgeStrokeWidth(node.children[i]));
+    }
+    return max;
+  }
+  
   function dendrogram(svg, data, rotated, width, height, padding) {
+    var topLineWidth = maxChildStrokeWidth(data, false);
+    
     var x = d3.scale.linear()
         .domain([data.height, 0])
-        .range([-1, width-padding]);
+        .range([topLineWidth/2, width-padding]);
     var y = d3.scale.linear()
         .domain([0, height])
         .range([0, height]);
@@ -444,7 +494,7 @@ function heatmap(selector, data, options) {
     var transform = "translate(1,0)";
     if (rotated) {
       // Flip dendrogram vertically
-      x.range([2, -height+padding+2]);
+      x.range([topLineWidth/2, -height+padding+2]);
       // Rotate
       transform = "rotate(-90) translate(-2,0)";
     }
@@ -475,11 +525,40 @@ function heatmap(selector, data, options) {
       .enter().append("polyline")
         .attr("class", "link")
         .attr("stroke", function(d, i) {
-          if (!d.edgePar || !d.edgePar.col) {
+          if (!d.edgePar.col) {
             return opts.link_color;
           } else {
             return d.edgePar.col;
           }
+        })
+        .attr("stroke-width", edgeStrokeWidth)
+        .attr("stroke-dasharray", function(d, i) {
+          var pattern;
+          switch (d.edgePar.lty) {
+            case 6:
+              pattern = [3,3,5,3];
+              break;
+            case 5:
+              pattern = [15,5];
+              break;
+            case 4:
+              pattern = [2,4,4,4];
+              break;
+            case 3:
+              pattern = [2,4];
+              break;
+            case 2:
+              pattern = [4,4];
+              break;
+            case 1:
+            default:
+              pattern = [];
+              break;
+          }
+          for (var i = 0; i < pattern.length; i++) {
+            pattern[i] = pattern[i] * (d.edgePar.lwd || 1);
+          }
+          return pattern.join(",");
         });
 
     function draw(selection) {

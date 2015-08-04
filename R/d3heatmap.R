@@ -1,4 +1,6 @@
 #' @import htmlwidgets
+#' @importFrom grDevices col2rgb rgb
+#' @importFrom stats as.dendrogram dendrapply dist hclust is.leaf order.dendrogram reorder sd
 NULL
 
 `%||%` <- function(a, b) {
@@ -95,6 +97,7 @@ d3heatmap <- function(x,
   hclustfun = hclust,
   dendrogram = c("both", "row", "column", "none"),
   reorderfun = function(d, w) reorder(d, w),
+  dendro.rds.path = "heatmap.dend.rds",
   
   k_row,
   k_col,
@@ -116,6 +119,7 @@ d3heatmap <- function(x,
   digits = 3L,
   cellnote,
   cellnote_scale = FALSE,
+  tip_transformation = 'none',
   
   ##TODO: decide later which names/conventions to keep
   theme = NULL,
@@ -144,7 +148,6 @@ d3heatmap <- function(x,
   ### TODO: debating if to include this or not:
   #   if(nr <= 1 || nc <= 1)
   #     stop("`x' must have at least 2 rows and 2 columns")
-
 
   ## Labels for Row/Column 
   ##======================
@@ -198,6 +201,8 @@ d3heatmap <- function(x,
     rowInd <- 1:nr
   }
   
+  # write out RDS file for genome_runner to use in cluster analysis
+  saveRDS(Rowv, file = dendro.rds.path)
   if (identical(Colv, "Rowv")) {
     Colv <- Rowv
   }
@@ -333,7 +338,8 @@ d3heatmap <- function(x,
     yaxis_font_size = yaxis_font_size,
     brush_color = brush_color,
     show_grid = show_grid,
-    anim_duration = anim_duration
+    anim_duration = anim_duration,
+    tip_transformation = tip_transformation
   ))
 
   if (is.null(rowDend)) {
