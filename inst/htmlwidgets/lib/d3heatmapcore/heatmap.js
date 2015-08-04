@@ -110,6 +110,7 @@ function heatmap(selector, data, options) {
     width: opts.yaxis_width,
     height: colormapBounds.height
   };
+  var xPadding = 100 // padding so x-axis labels do not overflow
   var xaxisBounds = {
     position: "absolute",
     top: colormapBounds.top + colormapBounds.height,
@@ -357,13 +358,12 @@ function heatmap(selector, data, options) {
     var fontSize = opts[(rotated ? 'x' : 'y') + 'axis_font_size']
         || Math.min(18, Math.max(9, scale.rangeBand() - (rotated ? 11: 8))) + "px";
     axisNodes.selectAll("text").style("font-size", fontSize);
-    
     var mouseTargets = svg.append("g")
       .selectAll("g").data(leaves);
     mouseTargets
       .enter()
         .append("g").append("rect")
-          .attr("transform", rotated ? "rotate(45),translate(0,0)" : "")
+          .attr("transform", rotated ? "translate(" + String(xPadding + 8) + ",13),rotate(135)" : "")
           .attr("fill", "transparent")
           .on("click", function(d, i) {
             var dim = rotated ? 'x' : 'y';
