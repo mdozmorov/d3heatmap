@@ -192,7 +192,7 @@ function heatmap(selector, data, options) {
           return "<table>" + 
             "<tr><th align=\"right\">Row</th><td>" + htmlEscape(data.rows[d.row]) + "</td></tr>" +
             "<tr><th align=\"right\">Column</th><td>" + htmlEscape(data.cols[d.col]) + "</td></tr>" +
-            "<tr><th align=\"right\">Value</th><td>" + unTransform(htmlEscape(d.label)).toString() + "</td></tr>" +
+            "<tr><th align=\"right\">Value</th><td>" + unTransform(htmlEscape(d.label)).toExponential(2).toString() + "</td></tr>" +
             "</table>";
         })
         .direction("se")
