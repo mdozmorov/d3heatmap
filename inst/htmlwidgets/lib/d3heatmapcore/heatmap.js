@@ -453,7 +453,7 @@ function heatmap(selector, data, options) {
     if (opts.tip_transformation == 'log10') {
       return 1/Math.pow(10,Math.abs(n));
     } else if(opts.tip_transformation == 'log2'){
-      return 1/Math.pow(2,Math.abs(n));
+      return Math.pow(2,Math.abs(n));
     } else {
       return n;
     }
